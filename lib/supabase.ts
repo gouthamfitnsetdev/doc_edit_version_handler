@@ -9,7 +9,7 @@ export type Document = {
   id: string
   name: string
   file_type: string
-  session_id: string
+  user_id: string
   created_at: string
 }
 

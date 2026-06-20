@@ -2,16 +2,17 @@
 
 import { useState } from 'react'
 import { downloadAsDocx, downloadAsTxt, downloadAsPdf } from '@/lib/exporter'
-import type { PdfEdits } from '@/lib/pdfExport'
+import type { PdfEdits, AddedLine } from '@/lib/pdfExport'
 
 interface Props {
   content: string
   filename: string
-  pdfBytes?: Uint8Array | null
-  pdfEdits?: PdfEdits
+  pdfBytes?:    Uint8Array | null
+  pdfEdits?:    PdfEdits
+  pdfAddedLines?: AddedLine[]
 }
 
-export default function DownloadButton({ content, filename, pdfBytes, pdfEdits }: Props) {
+export default function DownloadButton({ content, filename, pdfBytes, pdfEdits, pdfAddedLines }: Props) {
   const [open, setOpen] = useState(false)
   const [loading, setLoading] = useState(false)
 
@@ -23,7 +24,7 @@ export default function DownloadButton({ content, filename, pdfBytes, pdfEdits }
     try {
       if (format === 'pdf' && pdfBytes) {
         const { downloadModifiedPdf } = await import('@/lib/pdfExport')
-        await downloadModifiedPdf(pdfBytes, pdfEdits ?? {}, base)
+        await downloadModifiedPdf(pdfBytes, pdfEdits ?? {}, base, pdfAddedLines ?? [])
       } else if (format === 'docx') {
         await downloadAsDocx(content, base)
       } else if (format === 'pdf') {

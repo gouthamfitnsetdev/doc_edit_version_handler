@@ -1,16 +1,17 @@
 'use client'
 
-import { useEffect, useRef, useState, useCallback } from 'react'
-import type { PdfEdits } from '@/lib/pdfExport'
+import { useEffect, useRef, useState } from 'react'
+import type { PdfEdits, AddedLine } from '@/lib/pdfExport'
 
-const SCALE = 1.5
+const SCALE       = 1.5
+const DEFAULT_FS  = 12 * SCALE   // default font size for new lines
 
 type ScreenItem = {
   str: string
   x: number
-  y: number        // top of glyph (canvas coords)
+  y: number
   width: number
-  height: number   // used for click hit-zone only (generous)
+  height: number
   fontSize: number
   bold: boolean
   italic: boolean
@@ -23,94 +24,89 @@ type PageInfo = {
   items: ScreenItem[]
 }
 
+type ActiveEdit =
+  | { kind: 'existing'; pageIndex: number; itemIndex: number; x: number; y: number; width: number; fontSize: number; bold: boolean; italic: boolean; fontName: string; text: string }
+  | { kind: 'new';      pageIndex: number; x: number; y: number; fontSize: number; lineId: string | null; text: string }
+
 interface Props {
-  pdfBytes: Uint8Array
-  edits: PdfEdits
-  onChange: (edits: PdfEdits) => void
+  pdfBytes:    Uint8Array
+  edits:       PdfEdits
+  addedLines:  AddedLine[]
+  onChange:    (edits: PdfEdits) => void
+  onLinesChange: (lines: AddedLine[]) => void
 }
 
-export default function PDFCanvasEditor({ pdfBytes, edits, onChange }: Props) {
+function fontFamily(fontName: string) {
+  return /cmr|roman|times|palatino|bookman|garamond|serif/i.test(fontName)
+    ? 'Georgia, "Times New Roman", serif'
+    : 'Arial, Helvetica, sans-serif'
+}
+
+export default function PDFCanvasEditor({ pdfBytes, edits, addedLines, onChange, onLinesChange }: Props) {
   const [pageInfos, setPageInfos] = useState<PageInfo[]>([])
-  const [loading, setLoading] = useState(true)
-  const [activeEdit, setActiveEdit] = useState<{
-    pageIndex: number
-    itemIndex: number
-    x: number; y: number; width: number
-    fontSize: number; bold: boolean; italic: boolean; fontName: string
-    text: string
-  } | null>(null)
+  const [loading, setLoading]     = useState(true)
+  const [active, setActive]       = useState<ActiveEdit | null>(null)
 
-  const canvasRefs = useRef<(HTMLCanvasElement | null)[]>([])
-  const offscreenRefs = useRef<(HTMLCanvasElement | null)[]>([])
-  const pageObjsRef = useRef<Array<{ page: any; viewport: any }>>([])
+  const canvasRefs   = useRef<(HTMLCanvasElement | null)[]>([])
+  const offscreenRef = useRef<(HTMLCanvasElement | null)[]>([])
+  const pageObjsRef  = useRef<Array<{ page: any; viewport: any }>>([])
 
-  // ── 1. Load PDF and extract text item positions ───────────────────────────
+  // ── 1. Load PDF ────────────────────────────────────────────────────────────
   useEffect(() => {
     let cancelled = false
     setLoading(true)
-    setActiveEdit(null)
+    setActive(null)
     setPageInfos([])
 
     async function load() {
       const pdfjsLib = await import('pdfjs-dist')
       pdfjsLib.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs'
-
       const pdf = await pdfjsLib.getDocument({ data: pdfBytes.slice() }).promise
       if (cancelled) return
 
       const infos: PageInfo[] = []
-      const pageObjs: Array<{ page: any; viewport: any }> = []
+      const objs:  Array<{ page: any; viewport: any }> = []
 
       for (let p = 1; p <= pdf.numPages; p++) {
         if (cancelled) break
-        const page = await pdf.getPage(p)
+        const page     = await pdf.getPage(p)
         const viewport = page.getViewport({ scale: SCALE })
-        const textContent = await page.getTextContent()
-
+        const text     = await page.getTextContent()
         const items: ScreenItem[] = []
-        for (const it of textContent.items as any[]) {
+
+        for (const it of text.items as any[]) {
           if (!('str' in it) || !it.str.trim()) continue
-
-          const [vx, vy] = (viewport as any).convertToViewportPoint(
-            it.transform[4], it.transform[5],
-          )
-          const fontSizePt = Math.abs(it.transform[3]) || Math.abs(it.transform[0]) || 10
-          const sf = fontSizePt * SCALE
-          const fontName: string = it.fontName ?? ''
-
+          const [vx, vy]  = (viewport as any).convertToViewportPoint(it.transform[4], it.transform[5])
+          const sf        = (Math.abs(it.transform[3]) || Math.abs(it.transform[0]) || 10) * SCALE
+          const fn: string = it.fontName ?? ''
           items.push({
-            str: it.str,
-            x: vx,
-            y: vy - sf * 0.88,                          // baseline → glyph top
-            width: Math.max((it.width || 0) * SCALE, sf * 0.6 * it.str.length),
-            height: sf * 1.2,                            // generous click zone
+            str:      it.str,
+            x:        vx,
+            y:        vy - sf * 0.88,
+            width:    Math.max((it.width || 0) * SCALE, sf * 0.6 * it.str.length),
+            height:   sf * 1.2,
             fontSize: sf,
-            bold: /bold|heavy|black|cmbx|sfb/i.test(fontName),
-            italic: /italic|oblique|slant/i.test(fontName),
-            fontName,
+            bold:     /bold|heavy|black|cmbx|sfb/i.test(fn),
+            italic:   /italic|oblique|slant/i.test(fn),
+            fontName: fn,
           })
         }
-
         infos.push({ width: viewport.width, height: viewport.height, items })
-        pageObjs.push({ page, viewport })
+        objs.push({ page, viewport })
       }
 
       if (!cancelled) {
-        pageObjsRef.current = pageObjs
+        pageObjsRef.current = objs
         setPageInfos(infos)
         setLoading(false)
       }
     }
 
-    load().catch(err => {
-      console.error('PDF load error:', err)
-      if (!cancelled) setLoading(false)
-    })
-
+    load().catch(err => { console.error(err); if (!cancelled) setLoading(false) })
     return () => { cancelled = true }
   }, [pdfBytes])
 
-  // ── 2a. Initial render — bake each page into an offscreen canvas once ───────
+  // ── 2. Bake offscreen canvases once ────────────────────────────────────────
   useEffect(() => {
     if (!pageInfos.length) return
     let cancelled = false
@@ -120,112 +116,129 @@ export default function PDFCanvasEditor({ pdfBytes, edits, onChange }: Props) {
         if (cancelled) break
         const po = pageObjsRef.current[i]
         if (!po) continue
-
         const off = document.createElement('canvas')
         off.width  = pageInfos[i].width
         off.height = pageInfos[i].height
-        offscreenRefs.current[i] = off
-
+        offscreenRef.current[i] = off
         const ctx = off.getContext('2d')
         if (!ctx) continue
-        try {
-          await po.page.render({ canvasContext: ctx, viewport: po.viewport }).promise
-        } catch { continue }
+        try { await po.page.render({ canvasContext: ctx, viewport: po.viewport }).promise } catch { /* ok */ }
       }
-      if (!cancelled) applyEdits()
+      if (!cancelled) redraw()
     }
-
     bake()
     return () => { cancelled = true }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pageInfos])
 
-  // ── 2b. Re-apply edits whenever edits prop changes ────────────────────────
-  function applyEdits() {
+  // ── 3. Redraw on every edits/addedLines change ─────────────────────────────
+  function redraw() {
     for (let i = 0; i < pageInfos.length; i++) {
-      const canvas  = canvasRefs.current[i]
-      const off     = offscreenRefs.current[i]
+      const canvas = canvasRefs.current[i]
+      const off    = offscreenRef.current[i]
       if (!canvas || !off) continue
       const ctx = canvas.getContext('2d')
       if (!ctx) continue
 
-      // Restore the pristine PDF render
-      ctx.drawImage(off, 0, 0)
+      ctx.drawImage(off, 0, 0)   // restore original PDF
 
+      // Draw existing-text edits
       const pageEdits = edits[i]
-      if (!pageEdits) continue
+      if (pageEdits) {
+        for (const [idxStr, newText] of Object.entries(pageEdits)) {
+          const it = pageInfos[i].items[Number(idxStr)]
+          if (!it) continue
+          const ff = fontFamily(it.fontName)
+          ctx.font = `${it.italic ? 'italic ' : ''}${it.bold ? 'bold ' : ''}${it.fontSize}px ${ff}`
+          const eraseW = Math.max(it.width, ctx.measureText(it.str).width) + 16
+          ctx.fillStyle = '#ffffff'
+          ctx.fillRect(it.x - 4, it.y - 2, eraseW, it.fontSize * 1.3)
+          ctx.fillStyle = '#000000'
+          ctx.fillText(newText, it.x, it.y + it.fontSize * 0.88)
+        }
+      }
 
-      for (const [idxStr, newText] of Object.entries(pageEdits)) {
-        const idx = Number(idxStr)
-        const it = pageInfos[i].items[idx]
-        if (!it) continue
-
-        // Detect serif vs sans-serif from the pdf.js font name so edited text
-        // visually matches the surrounding characters as closely as possible.
-        const fontFamily = /cmr|roman|times|palatino|bookman|garamond|serif/i.test(it.fontName ?? '')
-          ? 'Georgia, "Times New Roman", serif'
-          : 'Arial, Helvetica, sans-serif'
-        const fontDecl = `${it.italic ? 'italic ' : ''}${it.bold ? 'bold ' : ''}${it.fontSize}px ${fontFamily}`
-
-        // Measure original text width so the eraser is wide enough.
-        ctx.font = fontDecl
-        const measuredW = ctx.measureText(it.str).width
-        const eraseW = Math.max(it.width, measuredW) + 16
-
-        // Eraser height must cover ascenders AND descenders.
-        // Descenders (g, y, j, p, q) reach ~25% of fontSize below the baseline.
-        // Eraser top is 2px above the stored glyph-top; height covers cap-top → descender-bottom.
-        const eraseH = it.fontSize * 1.3
-
-        ctx.fillStyle = '#ffffff'
-        ctx.fillRect(it.x - 4, it.y - 2, eraseW, eraseH)
-
+      // Draw added lines
+      for (const line of addedLines.filter(l => l.pageIndex === i)) {
+        const ff = fontFamily(line.italic ? 'italic' : '')
+        ctx.font      = `${line.italic ? 'italic ' : ''}${line.bold ? 'bold ' : ''}${line.fontSize}px ${ff}`
         ctx.fillStyle = '#000000'
-        ctx.fillText(newText, it.x, it.y + it.fontSize * 0.88)
+        ctx.fillText(line.text, line.x, line.y + line.fontSize * 0.88)
       }
     }
   }
 
-  useEffect(() => {
-    if (pageInfos.length) applyEdits()
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [edits])
+  useEffect(() => { if (pageInfos.length) redraw() }, [edits, addedLines])   // eslint-disable-line react-hooks/exhaustive-deps
 
-  // ── 3. Click to edit ───────────────────────────────────────────────────────
-  function handlePageClick(e: React.MouseEvent<HTMLDivElement>, pageIndex: number) {
+  // ── 4. Click handling ──────────────────────────────────────────────────────
+  function handleClick(e: React.MouseEvent<HTMLDivElement>, pageIndex: number) {
     const rect = e.currentTarget.getBoundingClientRect()
     const cx = e.clientX - rect.left
     const cy = e.clientY - rect.top
-    const items = pageInfos[pageIndex].items
     const pad = 6
 
+    // Check existing PDF text items
+    const items = pageInfos[pageIndex].items
     for (let i = 0; i < items.length; i++) {
       const it = items[i]
-      if (
-        cx >= it.x - pad && cx <= it.x + it.width + pad &&
-        cy >= it.y - pad && cy <= it.y + it.height + pad
-      ) {
-        const current = edits[pageIndex]?.[i] ?? it.str
-        setActiveEdit({
-          pageIndex, itemIndex: i,
+      if (cx >= it.x - pad && cx <= it.x + it.width + pad &&
+          cy >= it.y - pad && cy <= it.y + it.height + pad) {
+        setActive({
+          kind: 'existing', pageIndex, itemIndex: i,
           x: it.x, y: it.y, width: it.width,
           fontSize: it.fontSize, bold: it.bold, italic: it.italic, fontName: it.fontName,
-          text: current,
+          text: edits[pageIndex]?.[i] ?? it.str,
         })
         return
       }
     }
-    setActiveEdit(null)
+
+    // Check already-added lines
+    for (const line of addedLines.filter(l => l.pageIndex === pageIndex)) {
+      const w = line.fontSize * 0.6 * (line.text.length || 1)
+      if (cx >= line.x - pad && cx <= line.x + w + pad &&
+          cy >= line.y - pad && cy <= line.y + line.fontSize + pad) {
+        setActive({ kind: 'new', pageIndex, x: line.x, y: line.y, fontSize: line.fontSize, lineId: line.id, text: line.text })
+        return
+      }
+    }
+
+    // Click on empty space → create new line
+    setActive({ kind: 'new', pageIndex, x: cx, y: cy - DEFAULT_FS * 0.88, fontSize: DEFAULT_FS, lineId: null, text: '' })
   }
 
-  function commitEdit(newText: string) {
-    if (!activeEdit) return
-    const { pageIndex, itemIndex } = activeEdit
-    onChange({
-      ...edits,
-      [pageIndex]: { ...(edits[pageIndex] ?? {}), [itemIndex]: newText },
-    })
-    setActiveEdit(null)
+  function commitExisting(newText: string) {
+    if (!active || active.kind !== 'existing') return
+    const { pageIndex, itemIndex } = active
+    onChange({ ...edits, [pageIndex]: { ...(edits[pageIndex] ?? {}), [itemIndex]: newText } })
+    setActive(null)
+  }
+
+  function commitNew(newText: string) {
+    if (!active || active.kind !== 'new') return
+    const trimmed = newText.trim()
+
+    if (active.lineId) {
+      // Edit or delete an existing added line
+      const updated = trimmed
+        ? addedLines.map(l => l.id === active.lineId ? { ...l, text: trimmed } : l)
+        : addedLines.filter(l => l.id !== active.lineId)
+      onLinesChange(updated)
+    } else if (trimmed) {
+      // Brand-new line
+      const line: AddedLine = {
+        id:        crypto.randomUUID(),
+        pageIndex: active.pageIndex,
+        x:         active.x,
+        y:         active.y,
+        text:      trimmed,
+        fontSize:  active.fontSize,
+        bold:      false,
+        italic:    false,
+      }
+      onLinesChange([...addedLines, line])
+    }
+    setActive(null)
   }
 
   if (loading) {
@@ -240,7 +253,7 @@ export default function PDFCanvasEditor({ pdfBytes, edits, onChange }: Props) {
   return (
     <div className="flex flex-col items-center gap-6 py-6 px-4 overflow-auto bg-gray-400 h-full">
       <p className="text-xs text-white/90 bg-black/40 px-3 py-1 rounded-full select-none">
-        Click any text to edit · Enter to confirm · Esc to cancel
+        Click text to edit · Click empty space to add new line · Enter to confirm · Esc to cancel
       </p>
 
       {pageInfos.map((info, pageIndex) => (
@@ -248,9 +261,8 @@ export default function PDFCanvasEditor({ pdfBytes, edits, onChange }: Props) {
           key={pageIndex}
           style={{ position: 'relative', width: info.width, height: info.height, flexShrink: 0 }}
           className="shadow-2xl"
-          onClick={e => handlePageClick(e, pageIndex)}
+          onClick={e => handleClick(e, pageIndex)}
         >
-          {/* All text — original + committed edits — lives on this canvas */}
           <canvas
             width={info.width}
             height={info.height}
@@ -258,56 +270,55 @@ export default function PDFCanvasEditor({ pdfBytes, edits, onChange }: Props) {
             style={{ display: 'block' }}
           />
 
-          {/* Only the ACTIVE (in-progress) edit gets an HTML overlay.
-              On commit it is drawn to the canvas and this disappears. */}
-          {activeEdit?.pageIndex === pageIndex && (() => {
-            const ae = activeEdit
-            const inputW = Math.max(ae.width, 80)
-            // Use the same tall eraser so descenders are fully hidden during editing
-            const h = ae.fontSize * 1.3
-            const fontFamily = /cmr|roman|times|palatino|bookman|garamond|serif/i.test(ae.fontName ?? '')
-              ? 'Georgia, "Times New Roman", serif'
-              : 'Arial, Helvetica, sans-serif'
+          {/* Active edit overlay */}
+          {active?.pageIndex === pageIndex && (() => {
+            const isNew    = active.kind === 'new'
+            const ff       = isNew ? 'Arial, Helvetica, sans-serif' : fontFamily((active as any).fontName ?? '')
+            const bold     = isNew ? false : (active as any).bold
+            const italic   = isNew ? false : (active as any).italic
+            const fs       = active.fontSize
+            const h        = fs * 1.3
+            const inputW   = isNew ? 220 : Math.max((active as any).width ?? 80, 80)
+            const commit   = isNew ? commitNew : commitExisting
+
             return (
               <>
-                {/* White eraser behind the input */}
                 <div style={{
                   position: 'absolute',
-                  left: ae.x - 4,
-                  top: ae.y - 2,
-                  width: inputW + 16,
-                  height: h,
-                  background: 'white',
-                  zIndex: 9,
-                  pointerEvents: 'none',
+                  left: active.x - 4, top: active.y - 2,
+                  width: inputW + 16, height: h,
+                  background: 'white', zIndex: 9, pointerEvents: 'none',
+                  border: isNew ? '1.5px dashed #94a3b8' : 'none',
+                  borderRadius: 3,
                 }} />
                 <input
                   autoFocus
-                  defaultValue={ae.text}
+                  defaultValue={active.text}
+                  placeholder={isNew ? 'Type new text…' : undefined}
                   style={{
-                    position: 'absolute',
-                    left: ae.x,
-                    top: ae.y - 2,
-                    width: inputW + 8,
-                    height: h,
-                    fontSize: ae.fontSize,
-                    fontWeight: ae.bold ? 'bold' : 'normal',
-                    fontStyle: ae.italic ? 'italic' : 'normal',
-                    fontFamily,
-                    color: '#000',
-                    lineHeight: `${h}px`,
-                    border: '2px solid #3b82f6',
-                    borderRadius: 2,
-                    background: 'transparent',
-                    padding: '0 2px',
-                    outline: 'none',
-                    zIndex: 10,
-                    boxSizing: 'border-box',
+                    position:    'absolute',
+                    left:        active.x,
+                    top:         active.y - 2,
+                    width:       inputW + 8,
+                    height:      h,
+                    fontSize:    fs,
+                    fontWeight:  bold   ? 'bold'   : 'normal',
+                    fontStyle:   italic ? 'italic' : 'normal',
+                    fontFamily:  ff,
+                    color:       '#000',
+                    lineHeight:  `${h}px`,
+                    border:      `2px solid ${isNew ? '#94a3b8' : '#3b82f6'}`,
+                    borderRadius: 3,
+                    background:  'transparent',
+                    padding:     '0 4px',
+                    outline:     'none',
+                    zIndex:      10,
+                    boxSizing:   'border-box',
                   }}
-                  onBlur={e => commitEdit(e.target.value)}
+                  onBlur={e  => commit(e.target.value)}
                   onKeyDown={e => {
-                    if (e.key === 'Enter') commitEdit((e.target as HTMLInputElement).value)
-                    if (e.key === 'Escape') setActiveEdit(null)
+                    if (e.key === 'Enter') commit((e.target as HTMLInputElement).value)
+                    if (e.key === 'Escape') setActive(null)
                   }}
                 />
               </>

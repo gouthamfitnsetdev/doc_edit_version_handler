@@ -5,7 +5,7 @@ import { useParams, useRouter } from 'next/navigation'
 import dynamic from 'next/dynamic'
 import { supabase, Document, Version, downloadPdfFromStorage } from '@/lib/supabase'
 import { getPdfBytes, storePdfBytes } from '@/lib/pdfStore'
-import type { PdfEdits } from '@/lib/pdfExport'
+import type { PdfEdits, AddedLine } from '@/lib/pdfExport'
 import VersionSidebar from '@/components/VersionSidebar'
 import DiffViewer from '@/components/DiffViewer'
 import DownloadButton from '@/components/DownloadButton'
@@ -15,16 +15,16 @@ const PDFCanvasEditor = dynamic(() => import('@/components/PDFCanvasEditor'), { 
 
 type Tab = 'edit' | 'diff'
 
-function parsePdfContent(content: string): { html: string; edits: PdfEdits } {
+function parsePdfContent(content: string): { html: string; edits: PdfEdits; addedLines: AddedLine[] } {
   try {
     const p = JSON.parse(content)
-    if (p.__pdf__ === true) return { html: p.html ?? '', edits: p.edits ?? {} }
+    if (p.__pdf__ === true) return { html: p.html ?? '', edits: p.edits ?? {}, addedLines: p.addedLines ?? [] }
   } catch {}
-  return { html: content, edits: {} }
+  return { html: content, edits: {}, addedLines: [] }
 }
 
-function buildPdfContent(html: string, edits: PdfEdits): string {
-  return JSON.stringify({ __pdf__: true, html, edits })
+function buildPdfContent(html: string, edits: PdfEdits, addedLines: AddedLine[]): string {
+  return JSON.stringify({ __pdf__: true, html, edits, addedLines })
 }
 
 export default function EditorPage() {
@@ -38,8 +38,9 @@ export default function EditorPage() {
   const [tab, setTab] = useState<Tab>('edit')
   const [saving, setSaving] = useState(false)
   const [loading, setLoading] = useState(true)
-  const [pdfBytes, setPdfBytes] = useState<Uint8Array | null>(null)
-  const [pdfEdits, setPdfEdits] = useState<PdfEdits>({})
+  const [pdfBytes, setPdfBytes]         = useState<Uint8Array | null>(null)
+  const [pdfEdits, setPdfEdits]         = useState<PdfEdits>({})
+  const [pdfAddedLines, setPdfAddedLines] = useState<AddedLine[]>([])
 
   useEffect(() => {
     async function load() {
@@ -82,9 +83,10 @@ export default function EditorPage() {
       if (latest) {
         setActiveVersion(latest)
         if (docData.file_type === 'pdf') {
-          const { html, edits } = parsePdfContent(latest.content)
+          const { html, edits, addedLines } = parsePdfContent(latest.content)
           setEditorContent(html)
           setPdfEdits(edits)
+          setPdfAddedLines(addedLines)
         } else {
           setEditorContent(latest.content)
         }
@@ -99,7 +101,7 @@ export default function EditorPage() {
     setSaving(true)
     const nextNum = versions.length + 1
     const contentToSave = doc.file_type === 'pdf'
-      ? buildPdfContent(editorContent, pdfEdits)
+      ? buildPdfContent(editorContent, pdfEdits, pdfAddedLines)
       : editorContent
 
     const { data: newVer, error } = await supabase
@@ -123,9 +125,10 @@ export default function EditorPage() {
   const handleSelectVersion = useCallback((version: Version) => {
     setActiveVersion(version)
     if (doc?.file_type === 'pdf') {
-      const { html, edits } = parsePdfContent(version.content)
+      const { html, edits, addedLines } = parsePdfContent(version.content)
       setEditorContent(html)
       setPdfEdits(edits)
+      setPdfAddedLines(addedLines)
     } else {
       setEditorContent(version.content)
       setTab('diff')
@@ -170,6 +173,7 @@ export default function EditorPage() {
               filename={doc.name}
               pdfBytes={isPdf ? pdfBytes : undefined}
               pdfEdits={isPdf ? pdfEdits : undefined}
+              pdfAddedLines={isPdf ? pdfAddedLines : undefined}
             />
           )}
         </div>
@@ -181,7 +185,9 @@ export default function EditorPage() {
             <PDFCanvasEditor
               pdfBytes={pdfBytes!}
               edits={pdfEdits}
+              addedLines={pdfAddedLines}
               onChange={setPdfEdits}
+              onLinesChange={setPdfAddedLines}
             />
           ) : tab === 'edit' ? (
             <TipTapEditor
