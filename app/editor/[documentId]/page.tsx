@@ -157,17 +157,17 @@ export default function EditorPage() {
 
   return (
     <div className="flex flex-col h-screen bg-[#F8F5EF]">
-      <header className="flex items-center justify-between px-6 py-3 bg-white border-b border-[#E8E4DC]">
-        <div className="flex items-center gap-3">
+      <header className="flex items-center justify-between px-3 md:px-6 py-2.5 bg-white border-b border-[#E8E4DC]">
+        <div className="flex items-center gap-2 min-w-0">
           <button
             onClick={() => router.push('/')}
-            className="text-[#9CA3AF] hover:text-[#0C0C0C] transition-colors"
+            className="text-[#9CA3AF] hover:text-[#0C0C0C] transition-colors shrink-0"
             title="Back to dashboard"
           >
             <Wordmark size="sm" />
           </button>
-          <span className="text-[#E8E4DC]">/</span>
-          <h1 className="font-medium text-[#0C0C0C] truncate max-w-xs text-sm">{doc?.name}</h1>
+          <span className="text-[#E8E4DC] shrink-0">/</span>
+          <h1 className="font-medium text-[#0C0C0C] truncate text-xs md:text-sm">{doc?.name}</h1>
         </div>
 
         <div className="flex items-center gap-3">

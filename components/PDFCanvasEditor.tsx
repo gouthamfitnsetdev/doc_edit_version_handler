@@ -167,8 +167,9 @@ export default function PDFCanvasEditor({ pdfBytes, edits, addedLines, onChange,
           const ff = fontFamily(it.fontName)
           ctx.font = `${it.italic ? 'italic ' : ''}${it.bold ? 'bold ' : ''}${it.fontSize}px ${ff}`
           const eraseW = Math.max(it.width, ctx.measureText(it.str).width) + 16
-          ctx.fillStyle = '#ffffff'
-          ctx.fillRect(it.x - 4, it.y - 2, eraseW, it.fontSize * 1.3)
+          const ex = it.x - 4, ey = it.y - 2, eh = it.fontSize * 1.3
+          // restore that region from the baked PDF instead of painting white
+          ctx.drawImage(off, ex, ey, eraseW, eh, ex, ey, eraseW, eh)
           ctx.fillStyle = '#000000'
           ctx.fillText(newText, it.x, it.y + it.fontSize * 0.88)
         }
@@ -268,7 +269,7 @@ export default function PDFCanvasEditor({ pdfBytes, edits, addedLines, onChange,
   }
 
   return (
-    <div className="flex flex-col items-center gap-6 py-6 px-4 overflow-auto bg-[#6B7280] h-full">
+    <div className="flex flex-col items-center gap-6 pt-6 pb-20 md:pb-6 px-4 overflow-auto bg-[#6B7280] h-full">
       <p className="text-xs text-white/90 bg-black/40 px-3 py-1 rounded-full select-none text-center">
         Click text to edit · Click empty space to add line · Enter to confirm · Esc to cancel
       </p>
