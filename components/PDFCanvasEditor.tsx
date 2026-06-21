@@ -46,10 +46,26 @@ export default function PDFCanvasEditor({ pdfBytes, edits, addedLines, onChange,
   const [pageInfos, setPageInfos] = useState<PageInfo[]>([])
   const [loading, setLoading]     = useState(true)
   const [active, setActive]       = useState<ActiveEdit | null>(null)
+  const [viewScale, setViewScale] = useState(1)
 
   const canvasRefs   = useRef<(HTMLCanvasElement | null)[]>([])
   const offscreenRef = useRef<(HTMLCanvasElement | null)[]>([])
   const pageObjsRef  = useRef<Array<{ page: any; viewport: any }>>([])
+
+  // Compute scale to fit PDF page within the viewport width
+  useEffect(() => {
+    if (!pageInfos.length) return
+    const maxW = pageInfos[0].width
+    const available = window.innerWidth - 32 // 16px padding each side
+    setViewScale(available < maxW ? available / maxW : 1)
+
+    const onResize = () => {
+      const avail = window.innerWidth - 32
+      setViewScale(avail < maxW ? avail / maxW : 1)
+    }
+    window.addEventListener('resize', onResize)
+    return () => window.removeEventListener('resize', onResize)
+  }, [pageInfos])
 
   // ── 1. Load PDF ────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -171,10 +187,11 @@ export default function PDFCanvasEditor({ pdfBytes, edits, addedLines, onChange,
   useEffect(() => { if (pageInfos.length) redraw() }, [edits, addedLines])   // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── 4. Click handling ──────────────────────────────────────────────────────
-  function handleClick(e: React.MouseEvent<HTMLDivElement>, pageIndex: number) {
+  function handleClick(e: React.MouseEvent<HTMLDivElement>, pageIndex: number, scale = 1) {
     const rect = e.currentTarget.getBoundingClientRect()
-    const cx = e.clientX - rect.left
-    const cy = e.clientY - rect.top
+    // divide by scale because the inner div is CSS-scaled, not DOM-scaled
+    const cx = (e.clientX - rect.left) / scale
+    const cy = (e.clientY - rect.top) / scale
     const pad = 6
 
     // Check existing PDF text items
@@ -251,18 +268,34 @@ export default function PDFCanvasEditor({ pdfBytes, edits, addedLines, onChange,
   }
 
   return (
-    <div className="flex flex-col items-center gap-6 py-6 px-4 overflow-auto bg-gray-400 h-full">
-      <p className="text-xs text-white/90 bg-black/40 px-3 py-1 rounded-full select-none">
-        Click text to edit · Click empty space to add new line · Enter to confirm · Esc to cancel
+    <div className="flex flex-col items-center gap-6 py-6 px-4 overflow-auto bg-[#6B7280] h-full">
+      <p className="text-xs text-white/90 bg-black/40 px-3 py-1 rounded-full select-none text-center">
+        Click text to edit · Click empty space to add line · Enter to confirm · Esc to cancel
       </p>
 
       {pageInfos.map((info, pageIndex) => (
         <div
           key={pageIndex}
-          style={{ position: 'relative', width: info.width, height: info.height, flexShrink: 0 }}
+          style={{
+            width: info.width * viewScale,
+            height: info.height * viewScale,
+            flexShrink: 0,
+            position: 'relative',
+          }}
           className="shadow-2xl"
-          onClick={e => handleClick(e, pageIndex)}
         >
+          {/* inner div holds true canvas size, scaled via CSS transform */}
+          <div
+            style={{
+              position: 'absolute',
+              top: 0, left: 0,
+              width: info.width,
+              height: info.height,
+              transform: `scale(${viewScale})`,
+              transformOrigin: 'top left',
+            }}
+            onClick={e => handleClick(e, pageIndex, viewScale)}
+          >
           <canvas
             width={info.width}
             height={info.height}
@@ -324,7 +357,8 @@ export default function PDFCanvasEditor({ pdfBytes, edits, addedLines, onChange,
               </>
             )
           })()}
-        </div>
+          </div>  {/* end inner scale div */}
+        </div>  {/* end outer size div */}
       ))}
     </div>
   )

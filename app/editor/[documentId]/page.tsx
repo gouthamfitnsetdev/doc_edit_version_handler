@@ -10,6 +10,7 @@ import VersionSidebar from '@/components/VersionSidebar'
 import { Wordmark } from '@/components/brand/wordmark'
 import DiffViewer from '@/components/DiffViewer'
 import DownloadButton from '@/components/DownloadButton'
+import { useAuth } from '@/components/AuthProvider'
 
 const TipTapEditor = dynamic(() => import('@/components/TipTapEditor'), { ssr: false })
 const PDFCanvasEditor = dynamic(() => import('@/components/PDFCanvasEditor'), { ssr: false })
@@ -31,6 +32,7 @@ function buildPdfContent(html: string, edits: PdfEdits, addedLines: AddedLine[])
 export default function EditorPage() {
   const { documentId } = useParams<{ documentId: string }>()
   const router = useRouter()
+  const { user, loading: authLoading } = useAuth()
 
   const [doc, setDoc] = useState<Document | null>(null)
   const [versions, setVersions] = useState<Version[]>([])
@@ -44,6 +46,9 @@ export default function EditorPage() {
   const [pdfAddedLines, setPdfAddedLines] = useState<AddedLine[]>([])
 
   useEffect(() => {
+    if (authLoading) return          // wait for session to restore
+    if (!user) { router.push('/'); return }  // not logged in
+
     async function load() {
       const { data: docData } = await supabase
         .from('documents')
@@ -95,7 +100,7 @@ export default function EditorPage() {
       setLoading(false)
     }
     load()
-  }, [documentId, router])
+  }, [documentId, router, user, authLoading])
 
   const handleSaveVersion = useCallback(async (label: string) => {
     if (!doc) return
