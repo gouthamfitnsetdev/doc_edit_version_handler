@@ -357,8 +357,8 @@ export default function PDFCanvasEditor({ pdfBytes, edits, addedLines, onChange,
               </>
             )
           })()}
-          </div>  {/* end inner scale div */}
-        </div>  {/* end outer size div */}
+          </div>
+        </div>
       ))}
     </div>
   )
