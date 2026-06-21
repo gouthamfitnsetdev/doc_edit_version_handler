@@ -167,11 +167,16 @@ export default function PDFCanvasEditor({ pdfBytes, edits, addedLines, onChange,
           const ff = fontFamily(it.fontName)
           ctx.font = `${it.italic ? 'italic ' : ''}${it.bold ? 'bold ' : ''}${it.fontSize}px ${ff}`
           const eraseW = Math.max(it.width, ctx.measureText(it.str).width) + 16
-          const ex = it.x - 4, ey = it.y - 2, eh = it.fontSize * 1.3
-          // restore that region from the baked PDF instead of painting white
-          ctx.drawImage(off, ex, ey, eraseW, eh, ex, ey, eraseW, eh)
+          // white rect erases original text; clip prevents bleeding into adjacent lines
+          ctx.save()
+          ctx.beginPath()
+          ctx.rect(it.x - 4, it.y - 2, eraseW, it.fontSize * 1.3)
+          ctx.clip()
+          ctx.fillStyle = '#ffffff'
+          ctx.fillRect(it.x - 4, it.y - 2, eraseW, it.fontSize * 1.3)
           ctx.fillStyle = '#000000'
           ctx.fillText(newText, it.x, it.y + it.fontSize * 0.88)
+          ctx.restore()
         }
       }
 

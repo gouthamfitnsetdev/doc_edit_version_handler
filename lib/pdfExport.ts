@@ -53,11 +53,16 @@ export async function downloadModifiedPdf(
         const sfont = fontSizePt * SCALE
         const sw    = Math.max((it.width || 0) * SCALE, sfont * 0.55 * it.str.length) + 16
 
+        ctx.save()
+        ctx.beginPath()
+        ctx.rect(vx - 4, vy - sfont * 0.88 - 2, sw, sfont * 1.3)
+        ctx.clip()
         ctx.fillStyle = '#ffffff'
         ctx.fillRect(vx - 4, vy - sfont * 0.88 - 2, sw, sfont * 1.3)
         ctx.fillStyle = '#000000'
         ctx.font = `${sfont}px sans-serif`
         ctx.fillText(newText, vx, vy)
+        ctx.restore()
       }
     }
 

@@ -12,15 +12,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
+    // INITIAL_SESSION fires immediately on subscribe with the persisted session
+    // (from localStorage after a refresh). Using it as the single source of truth
+    // avoids the race between getSession() and onAuthStateChange.
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       setUser(session?.user ?? null)
-      setLoading(false)
-    })
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_e, session) => {
-      setUser(session?.user ?? null)
-      setLoading(false)
-      // clean the access_token hash from the URL after OAuth redirect
+      // Only mark loading done once we know the initial session state
+      if (event === 'INITIAL_SESSION') {
+        setLoading(false)
+      }
+
+      // Clean hash fragment left by OAuth redirect
       if (typeof window !== 'undefined' && window.location.hash.includes('access_token')) {
         window.history.replaceState(null, '', window.location.pathname)
       }
