@@ -4,14 +4,19 @@ import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase, Document } from '@/lib/supabase'
 import { useAuth } from '@/components/AuthProvider'
+import BlurFade from '@/components/magicui/blur-fade'
+import { ShimmerButton } from '@/components/magicui/shimmer-button'
+import { DotPattern } from '@/components/magicui/dot-pattern'
+import { MagicCard } from '@/components/magicui/magic-card'
+import { Wordmark } from '@/components/brand/wordmark'
 
 export default function HomePage() {
   const { user, loading } = useAuth()
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <div className="w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin" />
+      <div className="min-h-screen flex items-center justify-center bg-[#0C0C0C]">
+        <div className="w-6 h-6 border-2 border-white/20 border-t-white rounded-full animate-spin" />
       </div>
     )
   }
@@ -20,7 +25,7 @@ export default function HomePage() {
   return <Dashboard />
 }
 
-// ── Login ────────────────────────────────────────────────────────────────────
+// ── Login ─────────────────────────────────────────────────────────────────────
 
 function LoginPage() {
   const [busy, setBusy] = useState(false)
@@ -35,21 +40,52 @@ function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center p-6">
-      <div className="bg-white rounded-3xl shadow-xl p-10 w-full max-w-md text-center">
-        <div className="text-5xl mb-4">📄</div>
-        <h1 className="text-3xl font-bold text-gray-900 mb-2">DocEditor</h1>
-        <p className="text-gray-500 mb-8">
-          Upload PDFs, DOCX, or TXT files — edit them visually and track every version.
-        </p>
-        <button
-          onClick={signIn}
-          disabled={busy}
-          className="w-full flex items-center justify-center gap-3 px-6 py-3 bg-white border-2 border-gray-200 rounded-xl text-gray-700 font-medium hover:border-blue-400 hover:bg-blue-50 transition-all disabled:opacity-50"
-        >
-          <GoogleIcon />
-          {busy ? 'Redirecting…' : 'Continue with Google'}
-        </button>
+    <div className="min-h-screen bg-[#0C0C0C] flex items-center justify-center relative overflow-hidden">
+      <DotPattern
+        color="rgba(255,255,255,0.25)"
+        width={20}
+        height={20}
+        className="[mask-image:radial-gradient(560px_circle_at_center,white,transparent)]"
+      />
+
+      <div className="relative z-10 text-center px-6 max-w-lg w-full">
+        <BlurFade delay={0}>
+          <div className="flex justify-center mb-12">
+            <Wordmark size="lg" invert />
+          </div>
+        </BlurFade>
+
+        <BlurFade delay={0.12}>
+          <h1
+            className="text-white leading-[0.93] tracking-tight mb-14"
+            style={{
+              fontFamily: 'var(--font-playfair), Georgia, serif',
+              fontStyle: 'italic',
+              fontSize: 'clamp(60px, 10vw, 88px)',
+            }}
+          >
+            Your documents,<br />
+            beautifully<br />
+            edited.
+          </h1>
+        </BlurFade>
+
+        <BlurFade delay={0.26}>
+          <div className="flex flex-col items-center gap-4">
+            <ShimmerButton
+              onClick={signIn}
+              disabled={busy}
+              className="px-8 py-4 text-sm font-medium"
+              shimmerDuration="2.5s"
+            >
+              <GoogleIcon />
+              {busy ? 'Redirecting…' : 'Continue with Google'}
+            </ShimmerButton>
+            <p className="text-[#4B4B4B] text-xs tracking-wide">
+              Free · PDF, DOCX & TXT supported
+            </p>
+          </div>
+        </BlurFade>
       </div>
     </div>
   )
@@ -59,12 +95,12 @@ function LoginPage() {
 
 function Dashboard() {
   const { user } = useAuth()
-  const router   = useRouter()
-  const [docs, setDocs]       = useState<Document[]>([])
+  const router = useRouter()
+  const [docs, setDocs]               = useState<Document[]>([])
   const [docsLoading, setDocsLoading] = useState(true)
-  const [uploading, setUploading] = useState(false)
-  const [dragOver, setDragOver]   = useState(false)
-  const [error, setError]     = useState('')
+  const [uploading, setUploading]     = useState(false)
+  const [dragOver, setDragOver]       = useState(false)
+  const [error, setError]             = useState('')
 
   useEffect(() => {
     if (!user) return
@@ -87,17 +123,14 @@ function Dashboard() {
       if (!['pdf', 'docx', 'txt'].includes(ext)) {
         throw new Error('Only PDF, DOCX, and TXT files are supported.')
       }
-
       const { parseFile } = await import('@/lib/parsers')
       const content = await parseFile(file)
-
       const { data: doc, error: docErr } = await supabase
         .from('documents')
         .insert({ name: file.name, file_type: ext, user_id: user!.id })
         .select()
         .single()
       if (docErr) throw docErr
-
       const { error: verErr } = await supabase.from('versions').insert({
         document_id: doc.id,
         version_number: 1,
@@ -105,7 +138,6 @@ function Dashboard() {
         label: 'Version 1 (original)',
       })
       if (verErr) throw verErr
-
       if (ext === 'pdf') {
         const { storePdfBytes } = await import('@/lib/pdfStore')
         const { uploadPdfToStorage } = await import('@/lib/supabase')
@@ -113,7 +145,6 @@ function Dashboard() {
         storePdfBytes(doc.id, bytes)
         uploadPdfToStorage(doc.id, bytes).catch(console.error)
       }
-
       router.push(`/editor/${doc.id}`)
     } catch (e: any) {
       setError(e.message ?? 'Something went wrong.')
@@ -140,113 +171,170 @@ function Dashboard() {
     input.click()
   }
 
+  const firstName = user?.user_metadata?.full_name?.split(' ')[0]
+    ?? user?.email?.split('@')[0]
+    ?? 'there'
+
+  const hour = new Date().getHours()
+  const greeting = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening'
+
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-[#F8F5EF]">
       {/* Header */}
-      <header className="bg-white border-b px-6 py-4 flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <span className="text-2xl">📄</span>
-          <h1 className="text-xl font-bold text-gray-900">DocEditor</h1>
-        </div>
+      <header className="bg-white border-b border-[#E8E4DC] px-6 py-3.5 flex items-center justify-between">
+        <Wordmark size="md" />
         <div className="flex items-center gap-3">
           {user?.user_metadata?.avatar_url && (
             <img
               src={user.user_metadata.avatar_url}
               alt="avatar"
-              className="w-8 h-8 rounded-full"
+              className="w-7 h-7 rounded-full ring-2 ring-[#E8E4DC]"
             />
           )}
-          <span className="text-sm text-gray-600 hidden sm:block">
+          <span className="text-sm text-[#6B7280] hidden sm:block">
             {user?.user_metadata?.full_name ?? user?.email}
           </span>
           <button
             onClick={() => supabase.auth.signOut()}
-            className="text-sm text-gray-400 hover:text-gray-700 px-3 py-1.5 rounded-lg hover:bg-gray-100 transition-colors"
+            className="text-xs text-[#9CA3AF] hover:text-[#0C0C0C] px-2.5 py-1.5 rounded-lg hover:bg-[#F0EDE6] transition-colors"
           >
             Sign out
           </button>
         </div>
       </header>
 
-      <main className="max-w-5xl mx-auto px-6 py-10">
+      <main className="max-w-5xl mx-auto px-6 py-12">
+        {/* Greeting */}
+        <BlurFade>
+          <h2
+            className="text-[#0C0C0C] mb-10"
+            style={{
+              fontFamily: 'var(--font-playfair), Georgia, serif',
+              fontSize: 'clamp(28px, 4vw, 40px)',
+              fontWeight: 500,
+            }}
+          >
+            {greeting}, {firstName}.
+          </h2>
+        </BlurFade>
+
         {/* Upload zone */}
-        <div
-          onDragOver={e => { e.preventDefault(); setDragOver(true) }}
-          onDragLeave={() => setDragOver(false)}
-          onDrop={onDrop}
-          onClick={pickFile}
-          className={`border-2 border-dashed rounded-2xl p-8 text-center cursor-pointer transition-all mb-10
-            ${dragOver ? 'border-blue-500 bg-blue-50' : 'border-gray-300 bg-white hover:border-blue-400 hover:bg-blue-50'}`}
-        >
-          {uploading ? (
-            <div className="flex flex-col items-center gap-2">
-              <div className="w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin" />
-              <p className="text-gray-500 text-sm">Uploading…</p>
+        <BlurFade delay={0.1}>
+          <div
+            onDragOver={e => { e.preventDefault(); setDragOver(true) }}
+            onDragLeave={() => setDragOver(false)}
+            onDrop={onDrop}
+            onClick={pickFile}
+            className={`relative overflow-hidden rounded-2xl border-2 border-dashed p-10 text-center cursor-pointer transition-all duration-300 mb-3
+              ${dragOver
+                ? 'border-[#5B4FE9] bg-[#F0EEFF]'
+                : 'border-[#D9D4CC] bg-white hover:border-[#5B4FE9] hover:bg-[#FDFCFB]'
+              }`}
+          >
+            <DotPattern
+              color={dragOver ? 'rgba(91,79,233,0.18)' : 'rgba(0,0,0,0.06)'}
+              width={22}
+              height={22}
+              className="[mask-image:radial-gradient(320px_circle_at_center,white,transparent)]"
+            />
+            <div className="relative z-10">
+              {uploading ? (
+                <div className="flex flex-col items-center gap-3">
+                  <div className="w-7 h-7 border-2 border-[#5B4FE9]/30 border-t-[#5B4FE9] rounded-full animate-spin" />
+                  <p className="text-sm text-[#6B7280]">Uploading…</p>
+                </div>
+              ) : (
+                <>
+                  <div
+                    className="w-10 h-10 mx-auto mb-4 rounded-xl flex items-center justify-center text-[#5B4FE9] text-2xl font-light"
+                    style={{ background: 'rgba(91,79,233,0.08)' }}
+                  >
+                    +
+                  </div>
+                  <p className="font-medium text-[#0C0C0C] text-sm mb-1">
+                    {dragOver ? 'Release to upload' : 'Upload a document'}
+                  </p>
+                  <p className="text-xs text-[#9CA3AF]">PDF, DOCX, TXT — drag & drop or click</p>
+                </>
+              )}
+            </div>
+          </div>
+          {error && (
+            <p className="text-red-500 text-xs text-center mt-2 mb-4">{error}</p>
+          )}
+        </BlurFade>
+
+        {/* Documents */}
+        <BlurFade delay={0.2}>
+          {docsLoading ? (
+            <div className="flex justify-center py-16">
+              <div className="w-5 h-5 border-2 border-[#E8E4DC] border-t-[#5B4FE9] rounded-full animate-spin" />
+            </div>
+          ) : docs.length === 0 ? (
+            <div className="text-center py-16">
+              <p className="text-[#C4BFB8] text-sm">No documents yet.</p>
+              <p className="text-[#C4BFB8] text-xs mt-1">Upload one above to get started.</p>
             </div>
           ) : (
             <>
-              <div className="text-4xl mb-2 text-gray-300">+</div>
-              <p className="font-medium text-gray-700">
-                {dragOver ? 'Drop it!' : 'Upload new document'}
-              </p>
-              <p className="text-sm text-gray-400 mt-1">PDF, DOCX, TXT — drag & drop or click</p>
+              <h3 className="text-xs font-medium text-[#9CA3AF] tracking-widest uppercase mb-4 mt-8">
+                Your documents
+              </h3>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                {docs.map((doc, i) => (
+                  <BlurFade key={doc.id} delay={0.25 + i * 0.05} inView>
+                    <DocCard doc={doc} onClick={() => router.push(`/editor/${doc.id}`)} />
+                  </BlurFade>
+                ))}
+              </div>
             </>
           )}
-        </div>
-        {error && <p className="text-red-500 text-sm text-center -mt-6 mb-6">{error}</p>}
-
-        {/* Documents list */}
-        {docsLoading ? (
-          <div className="flex justify-center py-10">
-            <div className="w-6 h-6 border-4 border-blue-400 border-t-transparent rounded-full animate-spin" />
-          </div>
-        ) : docs.length === 0 ? (
-          <p className="text-center text-gray-400 py-10">
-            No documents yet — upload one above to get started.
-          </p>
-        ) : (
-          <>
-            <h2 className="text-lg font-semibold text-gray-700 mb-4">Your documents</h2>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-              {docs.map(doc => (
-                <DocCard
-                  key={doc.id}
-                  doc={doc}
-                  onClick={() => router.push(`/editor/${doc.id}`)}
-                />
-              ))}
-            </div>
-          </>
-        )}
+        </BlurFade>
       </main>
     </div>
   )
 }
 
 function DocCard({ doc, onClick }: { doc: Document; onClick: () => void }) {
-  const icons: Record<string, string> = { pdf: '📄', docx: '📝', txt: '📃' }
+  const typeColors: Record<string, { bg: string; text: string }> = {
+    pdf:  { bg: '#FFF0F0', text: '#E53E3E' },
+    docx: { bg: '#EEF2FF', text: '#4F46E5' },
+    txt:  { bg: '#F0FDF4', text: '#16A34A' },
+  }
+  const color = typeColors[doc.file_type] ?? { bg: '#F3F4F6', text: '#6B7280' }
   const date = new Date(doc.created_at).toLocaleDateString('en-US', {
     month: 'short', day: 'numeric', year: 'numeric',
   })
 
   return (
-    <button
-      onClick={onClick}
-      className="text-left bg-white rounded-2xl border border-gray-200 p-5 hover:border-blue-400 hover:shadow-md transition-all group"
-    >
-      <div className="text-3xl mb-3">{icons[doc.file_type] ?? '📄'}</div>
-      <p className="font-medium text-gray-900 truncate group-hover:text-blue-600 transition-colors">
-        {doc.name}
-      </p>
-      <p className="text-xs text-gray-400 mt-1 uppercase tracking-wide">{doc.file_type}</p>
-      <p className="text-xs text-gray-400 mt-2">{date}</p>
-    </button>
+    <MagicCard>
+      <button
+        onClick={onClick}
+        className="w-full text-left p-5 group"
+      >
+        <div className="flex items-start justify-between mb-4">
+          <span
+            className="text-[10px] font-medium tracking-widest uppercase px-2 py-0.5 rounded-md"
+            style={{ background: color.bg, color: color.text }}
+          >
+            {doc.file_type}
+          </span>
+        </div>
+        <p
+          className="font-medium text-[#0C0C0C] truncate text-sm mb-1 group-hover:text-[#5B4FE9] transition-colors duration-200"
+          style={{ fontFamily: 'var(--font-inter)' }}
+        >
+          {doc.name}
+        </p>
+        <p className="text-[11px] text-[#C4BFB8]">{date}</p>
+      </button>
+    </MagicCard>
   )
 }
 
 function GoogleIcon() {
   return (
-    <svg width="20" height="20" viewBox="0 0 24 24">
+    <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true">
       <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
       <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
       <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/>

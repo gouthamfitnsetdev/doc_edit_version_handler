@@ -7,6 +7,7 @@ import { supabase, Document, Version, downloadPdfFromStorage } from '@/lib/supab
 import { getPdfBytes, storePdfBytes } from '@/lib/pdfStore'
 import type { PdfEdits, AddedLine } from '@/lib/pdfExport'
 import VersionSidebar from '@/components/VersionSidebar'
+import { Wordmark } from '@/components/brand/wordmark'
 import DiffViewer from '@/components/DiffViewer'
 import DownloadButton from '@/components/DownloadButton'
 
@@ -150,19 +151,23 @@ export default function EditorPage() {
   }
 
   return (
-    <div className="flex flex-col h-screen bg-gray-100">
-      <header className="flex items-center justify-between px-6 py-3 bg-white border-b shadow-sm">
+    <div className="flex flex-col h-screen bg-[#F8F5EF]">
+      <header className="flex items-center justify-between px-6 py-3 bg-white border-b border-[#E8E4DC]">
         <div className="flex items-center gap-3">
-          <button onClick={() => router.push('/')} className="text-gray-400 hover:text-gray-600 text-sm">
-            ← Home
+          <button
+            onClick={() => router.push('/')}
+            className="text-[#9CA3AF] hover:text-[#0C0C0C] transition-colors"
+            title="Back to dashboard"
+          >
+            <Wordmark size="sm" />
           </button>
-          <span className="text-gray-300">|</span>
-          <h1 className="font-semibold text-gray-900 truncate max-w-xs">{doc?.name}</h1>
+          <span className="text-[#E8E4DC]">/</span>
+          <h1 className="font-medium text-[#0C0C0C] truncate max-w-xs text-sm">{doc?.name}</h1>
         </div>
 
         <div className="flex items-center gap-3">
           {!isPdf && (
-            <div className="flex rounded-lg border bg-gray-50 p-1 gap-1">
+            <div className="flex rounded-lg border border-[#E8E4DC] bg-[#F8F5EF] p-1 gap-1">
               <TabBtn active={tab === 'edit'} onClick={() => setTab('edit')}>Edit</TabBtn>
               <TabBtn active={tab === 'diff'} onClick={() => setTab('diff')}>Diff View</TabBtn>
             </div>
@@ -224,7 +229,10 @@ function TabBtn({ active, onClick, children }: {
     <button
       onClick={onClick}
       className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors
-        ${active ? 'bg-white shadow text-gray-900' : 'text-gray-500 hover:text-gray-700'}`}
+        ${active
+          ? 'bg-white shadow-sm text-[#0C0C0C]'
+          : 'text-[#9CA3AF] hover:text-[#0C0C0C]'
+        }`}
     >
       {children}
     </button>
